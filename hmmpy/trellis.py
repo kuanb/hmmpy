@@ -6,8 +6,6 @@ import pandas as pd
 from shapely.geometry import LineString
 
 DEFAULT_TRACE_NODE_RADIUS = 100  # meters
-DEFAULT_SIGMA_Z = 5
-DEFAULT_BETA = 3
 
 
 def graph_edges_to_gdf(G):
@@ -48,11 +46,11 @@ def graph_nodes_to_gdf(G):
     return gdf.set_index('id')
 
 
-def log_emission_probability(gps_point, road_edge, sigma_z=DEFAULT_SIGMA_Z):
+def emission_probability(gps_point, road_edge):
     point_distance = road_edge.project(gps_point)
     interpolated_point = road_edge.interpolate(point_distance)
     dist = interpolated_point.distance(gps_point)
-    return -0.5 * (dist / sigma_z)**2 - 0.5 * np.log(2 * np.pi * sigma_z**2)
+    return dist ** 2
 
 
 def generate_phase_candidates(
@@ -92,7 +90,7 @@ def generate_phase_candidates(
             line_geom = row.geometry
             node_fr_id, node_to_id = row.name
             emission_probability.append(
-                log_emission_probability(p, line_geom))
+                emission_probability(p, line_geom))
 
         edge_contents = []
         for edge_id, shape, emission_prob in zip(
@@ -164,7 +162,7 @@ def generate_trellis_graph(phase_candidates: list):
     return trellis
 
 
-def log_transition_probability(
+def transition_probability(
         road_network_graph,
         source_id,
         dest_id,
@@ -178,9 +176,8 @@ def log_transition_probability(
         target=dest_id,
         weight='length')
     dist_between_points = gps_point_fr.distance(gps_point_to)
-    
-    d = np.abs(dist_between_points - network_distance)
-    return -d / beta - np.log(beta)
+
+    return network_distance**2 / dist_between_points**2
 
 
 def path_probability(
@@ -201,7 +198,7 @@ def path_probability(
     if is_last_point:
         emission_weight += node_to['emission_probability']
         
-    transition_weight = log_transition_probability(
+    transition_weight = transition_probability(
         road_network_graph,
         node_fr['graph_node_fr'],
         node_to['graph_node_to'],
